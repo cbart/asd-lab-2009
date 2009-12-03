@@ -1,217 +1,162 @@
 #include <iostream>
 #include <algorithm>
+#include <vector>
+#include <utility>
+#include <functional>
+#include <cassert>
 
-typedef long long Integer;
-typedef bool Boolean;
+using namespace std;
 
-//const Integer CIRCLE_ARRAY_SIZE = 200001;
+typedef long long integer;
 
-struct Chord
-{
-    public:
-        Integer begin;
-        Integer end;
-        Integer colour;
-};
+typedef pair<integer, integer> ii;
+typedef pair<ii, integer> iii;
+typedef vector<iii> viii;
 
-typedef Integer Index;
-typedef Integer Value;
-
-class IntervalSet
+class itree
 {
     private:
-        class Node
+        typedef vector<integer> vi;
+        vi nodes; // nodes[0] unused;
+        integer n;
+        static inline integer parent(integer i) { return i / 2; }
+        static inline integer left(integer i) { return 2 * i; }
+        static inline integer right(integer i) { return 2 * i + 1; }
+        static inline integer min(integer i, integer j)
         {
-            public:
-                const Index begin;
-                const Index end;
-            private:
-                Value quantity;
-                Node *left;
-                Node *right;
-            public:
-                Node(Index l, Index r);
-                Value count(Index i, Value akk) const;
-                void addPrefix(Index to, Value q);
-                void addSuffix(Index from, Value q);
-                ~Node();
-        };
-        Node *root;
-    public:
-        IntervalSet(Index from, Index to) : root(new Node(from, to)) {}
-        inline void addPrefix(Index to, Value q) { root->addPrefix(to, q); }
-        inline void addSuffix(Index from, Value q) { root->addSuffix(from, q); }
-        inline Value count(Index i) { return root->count(i, 0); }
-        virtual ~IntervalSet() { delete root; }
-        void print()
-        {
-            for(Integer i = root->begin; i <= root->end; i ++)
-                std::cerr << "#[" << i << "]=" << count(i) << "; ";
-            std::cerr << std::flush;
+            return (i < j) ? i : j;
         }
+        static inline integer max(integer i, integer j)
+        {
+            return (i > j) ? i : j;
+        }
+        static inline integer avg(integer i, integer j)
+        {
+            return (i + j) / 2;
+        }
+        static inline integer abs(integer i) { return max(i, -i); }
+    public:
+        itree(integer n)
+            : nodes(2 * n + 1, 0),
+              n(n)
+        {
+        }
+        void push_prefix(integer prefix_end_inclusive, integer val)
+        {
+            integer ibegin = 1, iend = n;
+            integer index = 1;
+            while(true) {
+                //tu jest źle....
+                integer med = avg(ibegin, iend);
+                if(prefix_end_inclusive <= med) {
+                    if(ibegin == iend) {
+                        nodes[index] += val;
+                        break;
+                    }
+                    else {
+                        iend = med;
+                        index = left(index);
+                    }
+                }
+                else { // prefix_end_inclusive > med
+                    if(prefix_end_inclusive >= iend) { // ==
+                        nodes[index] += val;
+                        break;
+                    }
+                    else {
+                        nodes[left(index)] += val;
+                        ibegin = med + 1;
+                        index = right(index);
+                    }
+                }
+            }
+        }
+        integer count(integer i) const
+        {
+            integer ibegin = 1, iend = n;
+            integer index = 1;
+            integer counter = 0;
+            while(index <= 2 * n) {
+                //assert(index <= 2 * n);
+                counter += nodes[index];
+                integer med = avg(ibegin, iend);
+                if(i <= med) {
+                    iend = med;
+                    index = left(index);
+                }
+                else {
+                    ibegin = med + 1;
+                    index = right(index);
+                }
+            }
+            return counter;
+        }
+        void clear() {
+            nodes.assign(2 * n + 1, 0);
+        }
+        friend ostream& operator<<(ostream& os, const itree& i);
 };
 
-IntervalSet::Node::Node(Integer l, Integer r)
-    : begin(l),
-      end(r),
-      quantity(0)
+ostream& operator<<(ostream& os, const itree& i)
 {
-    if(l < r) {
-        Integer mid = (l + r) / 2;
-        left = new Node(l, mid);
-        right = new Node(mid + 1, r);
-    }
-    else {
-        left = NULL;
-        right = NULL;
-    }
+    for(integer j = 1; j <= i.n; j ++)
+        os << i.count(j) << '\n';
+    return os;
 }
 
-IntervalSet::Node::~Node()
+bool colour_cmp(iii one, iii two)
 {
-    delete left;
-    delete right;
-}
-
-Value IntervalSet::Node::count(Index i, Value akk = 0) const
-{
-    if(begin > i || i > end)
-        return 0;
-    if(begin == end)
-        return quantity + akk;
-    if(i <= ((begin + end) / 2))
-        return left->count(i, quantity + akk);
-    else
-        return right->count(i, quantity + akk);
-}
-
-void IntervalSet::Node::addPrefix(Index to, Value q)
-{
-    if(end == to)
-        quantity += q;
-    else if(to >= begin) {
-        Index mid = (begin + end) / 2;
-        if(to <= mid)
-            left->addPrefix(to, q);
-        else {
-            left->addPrefix(mid, q);
-            right->addPrefix(to, q);
-        }
-    }
-}
-
-void IntervalSet::Node::addSuffix(Index from, Value q)
-{
-    if(begin == from)
-        quantity += q;
-    else if(from <= end) {
-        Index mid = (begin + end) / 2;
-        if(from <= mid) {
-            left->addSuffix(from, q);
-            right->addSuffix(mid + 1, q);
-        }
-        else
-            right->addSuffix(from, q);
-    }
-}
-
-class ChordSet
-{
-    private:
-
-        Integer crosses;
-        IntervalSet prefixes;
-        IntervalSet suffixes;
-
-    public:
-
-        ChordSet(Integer n)
-            : crosses(0),
-              prefixes(1, 2 * n),
-              suffixes(1, 2 * n)
-        {
-        }
-
-        void add(Integer a, Integer b)
-        {
-            Integer pref_crosses = prefixes.count(a) + prefixes.count(b);
-            Integer suff_crosses = suffixes.count(a) + suffixes.count(b);
-            //std::cerr << "Adding crosses (" << a << "; " << b << "): "
-                //<< left_crosses << " - " << right_crosses << "." << std::endl;
-            crosses += (pref_crosses > suff_crosses) ?
-                (pref_crosses - suff_crosses) :
-                (suff_crosses - pref_crosses);
-            prefixes.addPrefix(b, 1);
-            suffixes.addSuffix(a, 1);
-        }
-
-        inline Integer crossesQuantity() const
-        {
-            return crosses;
-        }
-
-        void print()
-        {
-            std::cerr << "Prefixes: ";
-            prefixes.print();
-            std::cerr << "\nSuffixes: ";
-            suffixes.print();
-            std::cerr << std::endl;
-        }
-};
-
-bool chordColourCompare(Chord a, Chord b)
-{
-    return (a.colour <= b.colour);
+    return one.second < two.second;
 }
 
 int main()
 {
-    // Do not sync with stdio.
-    std::ios_base::sync_with_stdio(0);
+    ios_base::sync_with_stdio(0);
 
-    Integer n, k;
-    std::cin >> n;
-    std::cin >> k;
+    integer n, k;
+    cin >> n;
+    cin >> k;
 
-    Chord* circle = new Chord[n];
-    for(Integer i = 0; i < n; i ++) {
-        Integer a, b;
-        std::cin >> a;
-        std::cin >> b;
-        std::cin >> circle[i].colour;
-        if(a < b) {
-            circle[i].begin = a;
-            circle[i].end = b;
-        }
-        else {
-            circle[i].begin = b;
-            circle[i].end = a;
-        }
+    viii circle;
+    circle.reserve(n);
+
+    for(integer i = 0; i < n; i ++) {
+        integer a, b, c;
+        cin >> a;
+        cin >> b;
+        cin >> c;
+        if(a < b)
+            circle.push_back(make_pair(make_pair(a, b), c));
+        else
+            circle.push_back(make_pair(make_pair(b, a), c));
     }
 
-    std::sort(circle, circle + n, chordColourCompare);
+    integer counter = 0;
 
-    //for(Integer i = 0; i < n; i ++)
-        //std::cerr << circle[i].colour << "."
-            //<< "[" << circle[i].begin << "; " << circle[i].end << "]; "
-            //<< std::flush;
-//
-    ChordSet all = ChordSet(n);
-    Integer same_colour_crosses = 0;
-    Integer i = 0;
-    while(i < n) {
-        ChordSet cur_set = ChordSet(n);
-        Integer cur_colour = circle[i].colour;
-        while(i < n && cur_colour == circle[i].colour) {
-            all.add(circle[i].begin, circle[i].end);
-            cur_set.add(circle[i].begin, circle[i].end);
-            i ++;
-        }
-        same_colour_crosses += cur_set.crossesQuantity();
+    sort(circle.begin(), circle.end(), less<iii>()); // sorting with first coord
+
+    itree all(2 * n);
+    for(viii::const_iterator iter = circle.begin();
+            iter != circle.end(); iter ++) {
+        counter += all.count(iter->first.first) - all.count(iter->first.second);
+        //all.push_prefix(iter->first.second, 1);
     }
-    std::cout << all.crossesQuantity() - same_colour_crosses << std::endl;
+
+    stable_sort(circle.begin(), circle.end(), colour_cmp); // sorting with col
+
+    all.clear();
+    integer cur_colour = circle.begin()->second;
+    for(viii::const_iterator iter = circle.begin();
+            iter != circle.end(); iter ++) {
+        if(iter->second != cur_colour) {
+            all.clear();
+            cur_colour = iter->second;
+        }
+        counter -= all.count(iter->first.first) - all.count(iter->first.second);
+        all.push_prefix(iter->first.second, 1);
+    }
+
+    cout << counter << flush;
 
     return 0;
 }
-
